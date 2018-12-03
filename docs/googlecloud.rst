@@ -34,10 +34,13 @@ Download the Google Cloud CLI and initialise using the following command::
 
     gcloud init
 
+`Enable the Cloud Genomics, Compute Engine, and Cloud Storage APIs <https://console.cloud.google.com/flows/enableapi?apiid=genomics,compute,storage_api>`_
+
 Create and download credentials for google cloud in the console using the following procedure:
 
 * Go to APIs & Services → Credentials →  Create Credentials
 * Select Service account key.
+* Choose the following Roles: Genomics > Genomics Admin, Storage > Storage Object Admin, & Service Account > Service Account User
 * Download the json file and save as "creds.json".
 
 Export as env variable::
@@ -157,8 +160,18 @@ automatically add the missing instances, up to the number defined by the ``minIn
 Advanced configuration
 ======================
 
-Read :ref:`Cloud configuration<config-cloud>` section to learn more about advanced cloud configuration options.
+Use Different Instances Per Process
+-----------------------------------
+It is possible define the instance type to be used for each process in the workflow to override the default that is set in the config file by adding ``instanceType = 'foo'`` to a process in your workflow file.
+Example::
 
+     process doSomething {
+       instanceType = 'n1-highmem-16'
+       input:
+       file foo
+       output:
+       file bar
+     }
 
 .. _google-pipelines-API:
 
@@ -173,12 +186,13 @@ Download Google Cloud CLI and initialize using the following command::
 
     gcloud init
 
-You must also enable the Google Genomics API from your cloud console. See: `Enabling Google Genomics API <https://cloud.google.com/apis/docs/enable-disable-apis>`
+`Enable the Cloud Genomics, Compute Engine, and Cloud Storage APIs <https://console.cloud.google.com/flows/enableapi?apiid=genomics,compute,storage_api>`_
 
 Create and download credentials for google cloud in the console:
 
 * Go to APIs & Services → Credentials → Create Credentials
 * Select Service account key.
+* Choose the following Roles: Genomics > Genomics Admin, Storage > Storage Object Admin, & Service Account > Service Account User
 * Download the json file and save as "creds.json".
 
 Export as env variable::
