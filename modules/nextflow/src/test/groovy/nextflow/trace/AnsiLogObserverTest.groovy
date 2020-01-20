@@ -30,15 +30,14 @@ class AnsiLogObserverTest extends Specification {
 
         given:
         def observer = new AnsiLogObserver()
-        def stats = new AnsiLogObserver.ProcessStats()
+        def stats = new ProgressRecord(1, 'foo')
         stats.submitted = SUBMIT
-        stats.completed = COMPLETED
+        stats.succeeded = SUCCEEDED
         stats.cached    = CACHE
         stats.stored    = STORE
         stats.terminated = DONE
-        stats.error = ERR
+        stats.errored = ERR
         stats.hash = HASH
-        stats.name = 'foo'
 
         when:
         observer.@labelWidth = stats.name.size()
@@ -46,17 +45,18 @@ class AnsiLogObserverTest extends Specification {
         observer.line(stats) == EXPECTED
 
         where:
-        HASH        | SUBMIT  | COMPLETED | CACHE | STORE | DONE  | ERR   | EXPECTED
+        HASH        | SUBMIT  | SUCCEEDED | CACHE | STORE | DONE  | ERR   | EXPECTED
         null        | 0       | 0         | 0     | 0     | false | false | '[-        ] process > foo -'
         '4e/486876' | 1       | 0         | 0     | 0     | false | false | '[4e/486876] process > foo [  0%] 0 of 1'
-        '4e/486876' | 1       | 1         | 0     | 0     | false | false | '[4e/486876] process > foo [100%] 1 of 1'
-        '4e/486876' | 10      | 5         | 0     | 0     | false | false | '[4e/486876] process > foo [ 50%] 5 of 10'
+        '4e/486876' | 0       | 1         | 0     | 0     | false | false | '[4e/486876] process > foo [100%] 1 of 1'
+        '4e/486876' | 1       | 1         | 0     | 0     | false | false | '[4e/486876] process > foo [ 50%] 1 of 2'
+        '4e/486876' | 5       | 5         | 0     | 0     | false | false | '[4e/486876] process > foo [ 50%] 5 of 10'
         '4e/486876' | 0       | 0         | 5     | 0     | false | false | '[4e/486876] process > foo [100%] 5 of 5, cached: 5'
-        '4e/486876' | 2       | 1         | 3     | 0     | false | false | '[4e/486876] process > foo [ 80%] 4 of 5, cached: 3'
+        '4e/486876' | 1       | 1         | 3     | 0     | false | false | '[4e/486876] process > foo [ 80%] 4 of 5, cached: 3'
         'skipped'   | 0       | 0         | 0     | 5     | false | false | '[skipped  ] process > foo [100%] 5 of 5, stored: 5'
-        'skipped'   | 2       | 1         | 0     | 3     | false | false | '[skipped  ] process > foo [ 80%] 4 of 5, stored: 3'
-        'ab/123456' | 2       | 2         | 0     | 0     | true  | false | '[ab/123456] process > foo [100%] 2 of 2 ✔'
-        'ef/987654' | 2       | 2         | 0     | 0     | true  | true  | '[ef/987654] process > foo [100%] 2 of 2 ✘'
+        'skipped'   | 1       | 1         | 0     | 3     | false | false | '[skipped  ] process > foo [ 80%] 4 of 5, stored: 3'
+        'ab/123456' | 0       | 2         | 0     | 0     | true  | false | '[ab/123456] process > foo [100%] 2 of 2 ✔'
+        'ef/987654' | 0       | 2         | 0     | 0     | true  | true  | '[ef/987654] process > foo [100%] 2 of 2 ✘'
 
     }
 
@@ -99,6 +99,32 @@ class AnsiLogObserverTest extends Specification {
         'abcd'      | 5     | 'abcd'
         '12345678'  | 5     | '12...'
 
+    }
+
+    def 'should count lines' () {
+        given:
+        def ansi = new AnsiLogObserver()
+
+        when:
+        ansi.cols = 80
+        then:
+        ansi.countNewLines('hello') == 0
+        ansi.countNewLines('a\nb\nc') == 2
+        ansi.countNewLines('a\nb\nc\n') == 3
+
+        when:
+        ansi.cols = 5
+        then:
+        ansi.countNewLines('123') == 0
+        ansi.countNewLines('12345') == 0
+        ansi.countNewLines('12345678') == 1
+        ansi.countNewLines('1234567890') == 1
+        ansi.countNewLines('12345678901') == 2
+        and:
+        ansi.countNewLines('123\n') == 1
+        ansi.countNewLines('123\n\n') == 2
+        ansi.countNewLines('123\na\n') == 2
+        ansi.countNewLines('123\n123456\n') == 3
     }
 
 }

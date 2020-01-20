@@ -27,6 +27,7 @@ import nextflow.Session
 import nextflow.cloud.aws.batch.AwsOptions
 import nextflow.container.ContainerConfig
 import nextflow.container.DockerBuilder
+import nextflow.container.PodmanBuilder
 import nextflow.container.SingularityBuilder
 import nextflow.processor.TaskBean
 import nextflow.util.MustacheTemplateEngine
@@ -586,7 +587,7 @@ class BashWrapperBuilderTest extends Specification {
         then:
         binding.conda_activate == '''\
                 # conda environment
-                source activate /some/conda/env/foo
+                source $(conda info --json | awk '/conda_prefix/ { gsub(/"|,/, "", $2); print $2 }')/bin/activate /some/conda/env/foo
                 '''.stripIndent()
 
     }

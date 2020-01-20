@@ -76,6 +76,7 @@ nxf_main() {
     trap on_exit EXIT
     trap on_term TERM INT USR1 USR2
 
+    [[ "${NXF_CHDIR:-}" ]] && cd "$NXF_CHDIR"
     NXF_SCRATCH=''
     [[ $NXF_DEBUG > 0 ]] && nxf_env
     touch {{folder}}/.command.begin
@@ -83,7 +84,7 @@ nxf_main() {
     # beforeScript directive
     echo Before
     # conda environment
-    source activate /conda/env/path
+    source $(conda info --json | awk '/conda_prefix/ { gsub(/"|,/, "", $2); print $2 }')/bin/activate /conda/env/path
     set -u
     [[ $NXF_SCRATCH ]] && echo "nxf-scratch-dir $HOSTNAME:$NXF_SCRATCH" && cd $NXF_SCRATCH
     nxf_stage

@@ -24,6 +24,7 @@ import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
 import nextflow.container.ContainerBuilder
 import nextflow.container.DockerBuilder
+import nextflow.container.PodmanBuilder
 import nextflow.container.ShifterBuilder
 import nextflow.container.SingularityBuilder
 import nextflow.container.UdockerBuilder
@@ -31,6 +32,7 @@ import nextflow.processor.TaskBean
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
 import nextflow.util.Escape
+
 /**
  * Builder to create the BASH script which is used to
  * wrap and launch the user task
@@ -333,7 +335,12 @@ class BashWrapperBuilder {
     }
 
     private String getCondaActivateSnippet() {
-        condaEnv ? "# conda environment\nsource activate ${Escape.path(condaEnv)}\n" : null
+        if( !condaEnv )
+            return null
+        def result = "# conda environment\n"
+        result += 'source $(conda info --json | awk \'/conda_prefix/ { gsub(/"|,/, "", $2); print $2 }\')'
+        result += "/bin/activate ${Escape.path(condaEnv)}\n"
+        return result
     }
 
     protected String getTraceCommand(String interpreter) {
@@ -415,6 +422,8 @@ class BashWrapperBuilder {
          */
         if( engine == 'docker' )
             return new DockerBuilder(containerImage)
+        if( engine == 'podman' )
+            return new PodmanBuilder(containerImage)
         if( engine == 'singularity' )
             return new SingularityBuilder(containerImage)
         if( engine == 'udocker' )

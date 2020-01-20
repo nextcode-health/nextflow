@@ -13,23 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-apply plugin: 'java'
 
-dependencies {
-    // Capsule manages the fat jar building process
-    compile 'io.nextflow:capsule:1.0.3.1'
-    runtime 'io.nextflow:capsule-maven:1.0.3.2'
-    testCompile "junit:junit-dep:4.10"
-    /* testCompile inherited from top gradle build file */
-}
+package nextflow.trace
+/**
+ * Define execution progress access interface
+ *
+ * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ */
+interface ProgressState {
 
-sourceSets {
-    main {
-        java { srcDirs = ['src/main'] }
-        resources { srcDirs = ['src/resources'] }
-    }
+    List<ProgressRecord> getProgress()
 
-    test {
-        java { srcDirs = ['src/test'] }
-    }
+    int getProgressLength()
+
+    long getChangeTimestamp()
 }
