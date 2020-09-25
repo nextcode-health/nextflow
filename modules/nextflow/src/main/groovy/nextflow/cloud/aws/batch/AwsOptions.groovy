@@ -16,6 +16,8 @@
 
 package nextflow.cloud.aws.batch
 
+import java.nio.file.Path
+
 import groovy.transform.CompileStatic
 import groovy.transform.EqualsAndHashCode
 import groovy.transform.ToString
@@ -141,12 +143,29 @@ class AwsOptions {
 
     protected List<String> makeVols(obj) {
         if( !obj )
-            return Collections.emptyList()
+            return new ArrayList<String>(10)
         if( obj instanceof List )
-            return obj
+            return ((List)obj).collect { normPath0(it.toString()) }
         if( obj instanceof CharSequence )
-            return obj.toString().tokenize(',').collect { it.trim() }
+            return obj.toString().tokenize(',').collect { normPath0(it) }
         throw new IllegalArgumentException("Not a valid `aws.batch.volumes` value: $obj [${obj.getClass().getName()}]")
+    }
+
+    protected String normPath0(String it) {
+        def result = it.trim()
+        while( result.endsWith('/') && result.size()>1 )
+            result = result.substring(0,result.size()-1)
+        return result
+    }
+
+    AwsOptions addVolume(Path path) {
+        assert path.scheme == 'file'
+        if( volumes == null )
+            volumes = new ArrayList(10)
+        def location = path.toString()
+        if( !volumes.contains(location) )
+            volumes.add(location)
+        return this
     }
 
 }

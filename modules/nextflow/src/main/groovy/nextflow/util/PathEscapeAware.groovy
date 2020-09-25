@@ -1,4 +1,3 @@
-#!/usr/bin/env nextflow
 /*
  * Copyright 2013-2019, Centre for Genomic Regulation (CRG)
  *
@@ -15,31 +14,18 @@
  * limitations under the License.
  */
 
- /* 
-  * Run a process using a S3 file as input 
-  */
+package nextflow.util
 
+/**
+ * Marker interface for objects that needs
+ * extra escaping when rendered in a task command
+ *
+ * {@link nextflow.ast.TaskCmdXformVisitor}
+ * 
+ * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ */
+interface PathEscapeAware {
 
-s3file = file('s3://nextflow-ci/nf-test-data/transcriptome.fa')
-s3glob = Channel.fromFilePairs('s3://nextflow-ci/nf-test-data/*_{1,2}.fq')
-
-process foo {
-  echo true
-  input:
-  file(obj) from s3file
-
-  """
-  cat $obj | head
-  """
-}
-
-process bar {
-  tag "$pair"
-  input:
-  set pair, file(obj) from s3glob
-
-  """
-  cat $obj | head
-  """
+    String toStringEscape()
 
 }

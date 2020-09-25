@@ -33,7 +33,6 @@ class ScriptParserTest extends Specification {
         parser.result == 'Hello world!'
         parser.result == binding.getVariable('bar')
         parser.binding.scriptPath == file
-        parser.binding.module == false
         parser.binding.session == session
         !session.binding.hasVariable('bar')
     }
@@ -57,7 +56,6 @@ class ScriptParserTest extends Specification {
         parser.result == 'Hello world!'
         parser.result == binding.getVariable('bar')
         parser.binding.scriptPath == null
-        parser.binding.module == false
         parser.binding.session == session
         !session.binding.hasVariable('bar')
     }
@@ -79,7 +77,6 @@ class ScriptParserTest extends Specification {
         parser.script instanceof BaseScript
         parser.result == 'Hello world!'
         parser.binding.scriptPath == null
-        parser.binding.module == false
         parser.binding.session == session
         session.binding.getVariable('foo') == 'Hello'
         session.binding.getVariable('bar') == 'Hello world!'
@@ -145,4 +142,20 @@ class ScriptParserTest extends Specification {
         e.message.contains('foo.nf\n')
     }
 
+    def 'should find dsl2 declaration' () {
+        given:
+        def parser = new ScriptParser(Mock(Session))
+
+        expect:
+        !parser.isDsl2('hello')
+        and:
+        !parser.isDsl2('nextflow.preview.dsl=1')
+        and:
+        parser.isDsl2('nextflow.preview.dsl=2')
+        parser.isDsl2('nextflow.preview.dsl = 2')
+        parser.isDsl2('nextflow.preview.dsl =  2;')
+        parser.isDsl2('#!/bin/env nextflow\nnextflow.preview.dsl=2\nprintln foo')
+        parser.isDsl2('nextflow.enable.dsl=2')
+
+    }
 }

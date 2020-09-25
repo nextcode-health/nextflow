@@ -19,10 +19,12 @@ package nextflow.script
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
+import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import groovy.transform.EqualsAndHashCode
 import groovy.transform.Memoized
 import groovy.transform.PackageScope
+import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.exception.IllegalModulePath
 /**
@@ -30,26 +32,42 @@ import nextflow.exception.IllegalModulePath
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
+@Slf4j
 @CompileStatic
 @EqualsAndHashCode
 class IncludeDef {
 
+    @Canonical
+    static class Module {
+        String name
+        String alias
+    }
+
     @PackageScope path
-    @PackageScope String alias
-    @PackageScope String name
-    @PackageScope Map params = new LinkedHashMap(10)
+    @PackageScope List<Module> modules
+    @PackageScope Map params
+    @PackageScope Map addedParams
     private Session session
 
+    @Deprecated
     IncludeDef( String module ) {
+        log.warn "Anonymous module inclusion is deprecated -- Replace `include '${module}'` with `include { MODULE_NAME } from '${module}'`"
         this.path = module
+        this.modules = new ArrayList<>(1)
+        this.modules << new Module(null,null)
     }
 
     IncludeDef(TokenVar name, String alias=null) {
-        this.name = name.name
-        this.alias = alias
+        this.modules = new ArrayList<>(1)
+        this.modules << new Module(name.name, alias)
     }
 
-    protected IncludeDef() {}
+    protected IncludeDef(List<Module> modules) {
+        this.modules = new ArrayList<>(modules)
+    }
+
+    /** only for testing purpose -- do not use */
+    protected IncludeDef() { }
 
     IncludeDef from(Object path) {
         this.path = path
@@ -57,7 +75,12 @@ class IncludeDef {
     }
 
     IncludeDef params(Map args) {
-        this.params.putAll(args)
+        this.params = args != null ? new HashMap(args) : null
+        return this
+    }
+
+    IncludeDef addParams(Map args) {
+        this.addedParams = args
         return this
     }
 
@@ -66,15 +89,31 @@ class IncludeDef {
         return this
     }
 
-    void load() {
+    /*
+     * Note: this method invocation is injected during the Nextflow AST manipulation.
+     * Do not use it explicitly.
+     *
+     * @param ownerParams The params in the owner context
+     */
+    void load0(ScriptBinding.ParamsMap ownerParams) {
         checkValidPath(path)
-
         // -- resolve the concrete against the current script
         final moduleFile = realModulePath(path)
         // -- load the module
-        def moduleScript = loadModule0(moduleFile, params, session)
+        final moduleScript = loadModule0(moduleFile, resolveParams(ownerParams), session)
         // -- add it to the inclusions
-        meta.addModule(moduleScript, name, alias)
+        for( Module module : modules ) {
+            meta.addModule(moduleScript, module.name, module.alias)
+        }
+    }
+
+    private Map resolveParams(ScriptBinding.ParamsMap ownerParams) {
+        if( params!=null && addedParams!=null )
+            throw new IllegalArgumentException("Include 'params' and 'addParams' option conflict -- check module: $path")
+        if( params!=null )
+            return params
+
+        addedParams ? ownerParams.copyWith(addedParams) : ownerParams
     }
 
     @PackageScope

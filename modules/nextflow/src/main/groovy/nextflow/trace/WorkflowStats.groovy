@@ -89,50 +89,52 @@ class WorkflowStats implements Cloneable {
         return result
     }
 
+    static private long gtz(long x) {
+        x >= 0 ? x : 0
+    }
+
+    static private int gtz(int x) {
+        x >= 0 ? x : 0
+    }
+
     String getSucceedCountFmt() {
-        INTEGER_FMT.format(succeededCount)
+        INTEGER_FMT.format(gtz(succeededCount))
     }
 
     String getCachedCountFmt() {
-        INTEGER_FMT.format(cachedCount)
+        INTEGER_FMT.format(gtz(cachedCount))
     }
 
     String getFailedCountFmt() {
-        INTEGER_FMT.format(failedCount)
+        INTEGER_FMT.format(gtz(failedCount))
     }
 
     String getIgnoredCountFmt() {
-        INTEGER_FMT.format(ignoredCount)
+        INTEGER_FMT.format(gtz(ignoredCount))
     }
 
     float getSucceedPct() {
-        int tot = succeededCount + cachedCount + ignoredCount + failedCount
+        int tot = gtz(succeededCount + cachedCount + ignoredCount + failedCount)
         tot ? Math.round(succeededCount / tot * 10000.0 as float) / 100.0 as float : 0
     }
 
     float getCachedPct() {
-        def tot = succeededCount + cachedCount + ignoredCount + failedCount
-        tot ? Math.round(cachedCount / tot * 10000.0 as float) / 100.0 as float : 0
+        def tot = gtz(succeededCount + cachedCount + ignoredCount + failedCount)
+        tot ? Math.round(gtz(cachedCount) / tot * 10000.0 as float) / 100.0 as float : 0
     }
 
     float getIgnoredPct() {
-        def tot = succeededCount + cachedCount + ignoredCount + failedCount
-        tot ? Math.round(ignoredCount / tot * 10000.0 as float) / 100.0 as float : 0
+        def tot = gtz(succeededCount + cachedCount + ignoredCount + failedCount)
+        tot ? Math.round(gtz(ignoredCount) / tot * 10000.0 as float) / 100.0 as float : 0
     }
 
     float getFailedPct() {
-        def tot = succeededCount + cachedCount + ignoredCount + failedCount
-        tot ? Math.round(failedCount / tot * 10000.0 as float) / 100.0 as float : 0
+        def tot = gtz(succeededCount + cachedCount + ignoredCount + failedCount)
+        tot ? Math.round(gtz(failedCount) / tot * 10000.0 as float) / 100.0 as float : 0
     }
 
     protected Duration makeDuration(long value) {
-        try {
-            new Duration(value)
-        }
-        catch( Throwable e ) {
-            log.warn "Oops... not a valid workflow stats duration value=$value", e
-            return new Duration(0)
-        }
+        new Duration(gtz(value))
     }
 
     /**
@@ -154,54 +156,58 @@ class WorkflowStats implements Cloneable {
      * @return Succeed tasks count
      */
     @Deprecated
-    int getSucceedCount() { succeededCount }
+    int getSucceedCount() { gtz(succeededCount) }
 
     /**
      * @return Succeed tasks count
      */
-    int getSucceededCount() { succeededCount }
+    int getSucceededCount() { gtz(succeededCount) }
 
     /**
      * @return Failed tasks count
      */
-    int getFailedCount() { failedCount }
+    int getFailedCount() { gtz(failedCount) }
 
     /**
      * @return Ignored tasks count
      */
-    int getIgnoredCount() { ignoredCount }
+    int getIgnoredCount() { gtz(ignoredCount) }
 
     /**
      * @return Cached tasks count
      */
-    int getCachedCount() { cachedCount }
+    int getCachedCount() { gtz(cachedCount) }
 
-    int getPendingCount() { pendingCount }
+    int getPendingCount() { gtz(pendingCount) }
 
-    int getSubmittedCount() { submittedCount }
+    int getSubmittedCount() { gtz(submittedCount) }
 
-    int getRunningCount() { runningCount }
+    int getRunningCount() { gtz(runningCount) }
 
-    int getRetriesCount() { retriesCount }
+    int getRetriesCount() { gtz(retriesCount) }
 
-    int getAbortedCount() { abortedCount }
+    int getAbortedCount() { gtz(abortedCount) }
 
-    int getLoadCpus() { loadCpus }
+    int getLoadCpus() { gtz(loadCpus) }
 
-    long getLoadMemory() { loadMemory }
+    long getLoadMemory() { gtz(loadMemory) }
 
-    int getPeakRunning() { peakRunning }
+    String getLoadMemoryFmt() { MemoryUnit.of(getLoadMemory()).toString() }
 
-    long getPeakCpus() { peakCpus }
+    int getPeakRunning() { gtz(peakRunning) }
 
-    long getPeakMemory() { peakMemory }
+    long getPeakCpus() { gtz(peakCpus) }
+
+    long getPeakMemory() { gtz(peakMemory) }
+
+    String getPeakMemoryFmt() { MemoryUnit.of(getPeakMemory()).toString() }
 
     /**
      * @return A formatted string representing the overall execution time as CPU-Hours
      */
     String getComputeTimeFmt() {
 
-        final total = (succeedMillis + cachedMillis + failedMillis) / 1000
+        final total = gtz(succeedMillis + cachedMillis + failedMillis) / 1000
         if( total < MIN_SECS )
             return '(a few seconds)'
 
@@ -252,10 +258,10 @@ class WorkflowStats implements Cloneable {
                 "failedDuration=${getFailedDuration()}; " +
                 "cachedDuration=${getCachedDuration()};" +
                 "loadCpus=${loadCpus}; " +
-                "loadMemory=${MemoryUnit.of(loadMemory)}; " +
+                "loadMemory=${getLoadMemoryFmt()}; " +
                 "peakRunning=${peakRunning}; " +
                 "peakCpus=${peakCpus}; " +
-                "peakMemory=${MemoryUnit.of(peakMemory)}; " +
+                "peakMemory=${getPeakMemoryFmt()}; " +
                 "]"
     }
 
@@ -285,6 +291,7 @@ class WorkflowStats implements Cloneable {
     void markSubmitted(TaskRun task) {
         final state = getOrCreateRecord(task.processor)
         state.hash = task.hashLog
+        state.taskName = task.name
         state.pending --
         state.submitted ++
         // global counters
@@ -331,7 +338,7 @@ class WorkflowStats implements Cloneable {
 
     void markCompleted(TaskRun task, TraceRecord trace) {
         ProgressRecord state = getOrCreateRecord(task.processor)
-
+        state.taskName = task.name
         state.hash = task.hashLog
         state.running --
         state.loadCpus -= task.getConfig().getCpus()
@@ -377,6 +384,7 @@ class WorkflowStats implements Cloneable {
         if( trace ) {
             state.cached++
             state.hash = task.hashLog
+            state.taskName = task.name
             // global counters
             this.cachedMillis += getCpuTime(trace)
             this.cachedCount++
@@ -384,6 +392,7 @@ class WorkflowStats implements Cloneable {
         else {
             state.stored++
             state.hash = 'skipped'
+            state.taskName = task.name
         }
         changeTimestamp = System.currentTimeMillis()
     }

@@ -16,6 +16,10 @@
 
 package nextflow.ast
 
+import static nextflow.Const.*
+import static nextflow.ast.ASTHelpers.*
+import static org.codehaus.groovy.ast.tools.GeneralUtils.*
+
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.script.BaseScript
@@ -33,6 +37,7 @@ import nextflow.script.TokenVar
 import org.codehaus.groovy.ast.ASTNode
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport
 import org.codehaus.groovy.ast.ClassNode
+import org.codehaus.groovy.ast.ConstructorNode
 import org.codehaus.groovy.ast.MethodNode
 import org.codehaus.groovy.ast.Parameter
 import org.codehaus.groovy.ast.VariableScope
@@ -43,6 +48,7 @@ import org.codehaus.groovy.ast.expr.ClosureExpression
 import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.ast.expr.Expression
 import org.codehaus.groovy.ast.expr.GStringExpression
+import org.codehaus.groovy.ast.expr.ListExpression
 import org.codehaus.groovy.ast.expr.MapEntryExpression
 import org.codehaus.groovy.ast.expr.MapExpression
 import org.codehaus.groovy.ast.expr.MethodCallExpression
@@ -61,20 +67,6 @@ import org.codehaus.groovy.syntax.Token
 import org.codehaus.groovy.syntax.Types
 import org.codehaus.groovy.transform.ASTTransformation
 import org.codehaus.groovy.transform.GroovyASTTransformation
-import static nextflow.Const.SCOPE_SEP
-import static nextflow.ast.ASTHelpers.createX
-import static nextflow.ast.ASTHelpers.isAssignX
-import static nextflow.ast.ASTHelpers.isConstX
-import static nextflow.ast.ASTHelpers.isMapX
-import static nextflow.ast.ASTHelpers.isMethodCallX
-import static nextflow.ast.ASTHelpers.isThisX
-import static nextflow.ast.ASTHelpers.isTupleX
-import static nextflow.ast.ASTHelpers.isVariableX
-import static org.codehaus.groovy.ast.tools.GeneralUtils.block
-import static org.codehaus.groovy.ast.tools.GeneralUtils.callThisX
-import static org.codehaus.groovy.ast.tools.GeneralUtils.closureX
-import static org.codehaus.groovy.ast.tools.GeneralUtils.constX
-import static org.codehaus.groovy.ast.tools.GeneralUtils.stmt
 /**
  * Implement some syntax sugars of Nextflow DSL scripting.
  *
@@ -153,6 +145,63 @@ class NextflowDSLImpl implements ASTTransformation {
             super.visitMethod(node)
         }
 
+        protected Statement makeSetProcessNamesStm() {
+            final names = new ListExpression()
+            for( String it: processNames ) {
+                names.addExpression(new ConstantExpression(it.toString()))
+            }
+
+            // the method list argument
+            final args = new ArgumentListExpression()
+            args.addExpression(names)
+
+            // some magic code
+            // this generates the invocation of the method:
+            //   nextflow.script.ScriptMeta.get(this).setProcessNames(<list of process names>)
+            final scriptMeta = new PropertyExpression( new PropertyExpression(new VariableExpression('nextflow'),'script'), 'ScriptMeta')
+            final thiz = new ArgumentListExpression(); thiz.addExpression( new VariableExpression('this') )
+            final meta = new MethodCallExpression( scriptMeta, 'get', thiz )
+            final call = new MethodCallExpression( meta, 'setDsl1ProcessNames', args)
+            final stm = new ExpressionStatement(call)
+            return stm
+        }
+
+        /**
+         * Add to constructor a method call to inject parsed metadata.
+         * Only needed by DSL1.
+         *
+         * @param node The node representing the class to be invoked
+         */
+        protected void injectMetadata(ClassNode node) {
+            for( ConstructorNode constructor : node.getDeclaredConstructors() ) {
+                def code = constructor.getCode()
+                if( code instanceof BlockStatement ) {
+                    code.addStatement(makeSetProcessNamesStm())
+                }
+                else if( code instanceof ExpressionStatement ) {
+                    def expr = code
+                    def block = new BlockStatement()
+                    block.addStatement(expr)
+                    block.addStatement(makeSetProcessNamesStm())
+                    constructor.setCode(block)
+                }
+                else
+                    throw new IllegalStateException("Invalid constructor expression: $code")
+            }
+        }
+
+        /**
+         * Only needed by DSL1 to inject process names declared in the script
+         *
+         * @param node The node representing the class to be invoked
+         */
+        @Override
+        protected void visitObjectInitializerStatements(ClassNode node) {
+            if( node.getSuperClass().getName() == BaseScript.getName() )
+                injectMetadata(node)
+            super.visitObjectInitializerStatements(node)
+        }
+
         @Override
         void visitMethodCallExpression(MethodCallExpression methodCall) {
             // pre-condition to be verified to apply the transformation
@@ -193,7 +242,7 @@ class NextflowDSLImpl implements ASTTransformation {
                 final methodCall = (MethodCallExpression)stm.getExpression()
                 convertIncludeDef(methodCall)
                 // this is necessary to invoke the `load` method on the include definition
-                final loadCall = new MethodCallExpression(methodCall, 'load', new ArgumentListExpression())
+                final loadCall = new MethodCallExpression(methodCall, 'load0', new ArgumentListExpression(new VariableExpression('params')))
                 stm.setExpression(loadCall)
             }
             super.visitExpressionStatement(stm)
@@ -229,6 +278,38 @@ class NextflowDSLImpl implements ASTTransformation {
                     // the alias to give it
                     final alias = constX(cast.type.name)
                     newArgs.addExpression( createX(IncludeDef, token, alias) )
+                }
+                else if( arg instanceof ClosureExpression ) {
+                    // multiple modules inclusion 
+                    final block = (BlockStatement)arg.getCode()
+                    final modulesList = new ListExpression()
+                    for( Statement stm : block.statements ) {
+                        if( stm instanceof ExpressionStatement ) {
+                            CastExpression castX
+                            VariableExpression varX
+                            Expression moduleX
+                            if( (varX=isVariableX(stm.expression)) ) {
+                                def name = constX(varX.name)
+                                moduleX = createX(IncludeDef.Module, name)
+                            }
+                            else if( (castX=isCastX(stm.expression)) && (varX=isVariableX(castX.expression)) ) {
+                                def name = constX(varX.name)
+                                final alias = constX(castX.type.name)
+                                moduleX = createX(IncludeDef.Module, name, alias)
+                            }
+                            else {
+                                syntaxError(call, "Not a valid include module name")
+                                return
+                            }
+                            modulesList.addExpression(moduleX)
+                        }
+                        else {
+                            syntaxError(call, "Not a valid include module name")
+                            return
+                        }
+
+                    }
+                    newArgs.addExpression( createX(IncludeDef, modulesList) )
                 }
                 else {
                     syntaxError(call, "Not a valid include definition -- it must specify the module path as a string")
@@ -584,7 +665,9 @@ class NextflowDSLImpl implements ASTTransformation {
                     // append the new block to the
                     // set the 'script' flag parameter
                     def wrap = makeScriptWrapper(execClosure, source, currentLabel, unit)
-                    block.addStatement( new ExpressionStatement(wrap)  )
+                    block.addStatement( new ExpressionStatement(wrap) )
+                    if( currentLabel == 'script' )
+                        block.visit(new TaskCmdXformVisitor(unit))
                     done = true
 
                 }
@@ -604,6 +687,8 @@ class NextflowDSLImpl implements ASTTransformation {
                         done = wrapExpressionWithClosure(block, stm.getExpression(), len, source, unit)
                     }
 
+                    // apply command variables escape
+                    stm.visit(new TaskCmdXformVisitor(unit))
                     // set the 'script' flag
                     currentLabel = 'script'
                 }
@@ -847,7 +932,7 @@ class NextflowDSLImpl implements ASTTransformation {
             List<Expression> args = isTupleX(call.arguments)?.expressions
             if( !args ) return
             if( args.size()<2 && (args.size()!=1 || call.methodAsString!='_out_stdout')) return
-             MapExpression map = isMapX(args[0])
+            MapExpression map = isMapX(args[0])
             if( !map ) return
             for( int i=0; i<map.mapEntryExpressions.size(); i++ ) {
                 final entry = map.mapEntryExpressions[i]

@@ -81,13 +81,17 @@ class AnsiLogObserver implements TraceObserver {
 
     private int labelWidth
 
-    private int cols = 80
+    private volatile int cols = 80
 
     private long startTimestamp
 
     private long endTimestamp
 
+    private long lastWidthReset
+
     private Boolean enableSummary = System.getenv('NXF_ANSI_SUMMARY') as Boolean
+
+    private final int WARN_MESSAGE_TIMEOUT = 35_000
 
     private WorkflowStatsObserver statsObserver
 
@@ -174,7 +178,7 @@ class AnsiLogObserver implements TraceObserver {
 
             // evict old warnings
             final delta = System.currentTimeMillis()-event.timestamp
-            if( delta>35_000 ) {
+            if( delta>WARN_MESSAGE_TIMEOUT ) {
                 BLANKS += event.message.count(NEWLINE)+1
                 itr.remove()
                 continue
@@ -228,10 +232,16 @@ class AnsiLogObserver implements TraceObserver {
         cols = TerminalFactory.get().getWidth()
 
         // calc max width
-        labelWidth = 0
+        final now = System.currentTimeMillis()
+        if( now-lastWidthReset>20_000 )
+            labelWidth = 0
+
+        final lastWidth = labelWidth
         for( ProgressRecord entry : processes ) {
-            labelWidth = Math.max(labelWidth, entry.name.size())
+            labelWidth = Math.max(labelWidth, entry.taskName.size())
         }
+        if( lastWidth != labelWidth )
+            lastWidthReset = now
 
         // render line
         for( ProgressRecord entry : processes ) {
@@ -264,22 +274,22 @@ class AnsiLogObserver implements TraceObserver {
 
         final str = term.toString()
         final count = printAndCountLines(str)
+        AnsiConsole.out.flush()
+
         // usually the gap should be negative because `count` should be greater or equal
         // than the previous `printedLines` value (the output should become longer)
         // otherwise cleanup the remaining lines
         gapLines = printedLines > count ? printedLines-count : 0
         if( gapLines>0 ) for(int i=0; i<gapLines; i++ )
-            AnsiConsole.out.print(NEWLINE)
-        // finally update the value of printed lines
+            AnsiConsole.out.print(ansi().eraseLine().newline())
+        // at the end update the value of printed lines
         printedLines = count
-
-        AnsiConsole.out.flush()
     }
 
     protected int printAndCountLines(String str) {
         if( str ) {
             printAnsiLines(str)
-            return countNewLines(str)
+            return str.count(NEWLINE)
         }
         else
             return 0
@@ -344,7 +354,7 @@ class AnsiLogObserver implements TraceObserver {
     protected String line(ProgressRecord stats) {
         final float tot = stats.getTotalCount()
         final float com = stats.getCompletedCount()
-        final label = fmtWidth(stats.name, labelWidth, Math.max(cols-50, 5))
+        final label = fmtWidth(stats.taskName, labelWidth, Math.max(cols-50, 5))
         final hh = (stats.hash && tot>0 ? stats.hash : '-').padRight(9)
 
         if( tot == 0  )
@@ -398,21 +408,4 @@ class AnsiLogObserver implements TraceObserver {
         markModified()
     }
 
-    protected int countNewLines(String str) {
-        int result=0
-        int gap=0
-        while( true ) {
-            int p=str.indexOf(NEWLINE)
-            if( p==-1 ) {
-                result += (str.length()-1).intdiv(cols) +gap
-                break
-            }
-            else {
-                result += (p-1).intdiv(cols) +gap
-                str = str.substring(p+1)
-                if( gap==0 ) gap = 1
-            }
-        }
-        return result
-    }
 }

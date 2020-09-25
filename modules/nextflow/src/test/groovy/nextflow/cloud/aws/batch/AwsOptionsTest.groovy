@@ -125,7 +125,9 @@ class AwsOptionsTest extends Specification {
         null            | []
         'foo'           | ['foo']
         'foo, bar'      | ['foo','bar']
+        '/foo/,/bar///' | ['/foo','/bar']
         ['/this','/that'] | ['/this','/that']
+        ['/foo/bar/']   | ['/foo/bar']
 
     }
 
@@ -192,6 +194,22 @@ class AwsOptionsTest extends Specification {
         new AwsOptions(cliPath: '/foo/aws')
         then:
         thrown(ProcessUnrecoverableException)
+    }
+
+    def 'should add a volume' () {
+        given:
+        def opts = new AwsOptions()
+
+        when:
+        opts.addVolume(Paths.get('/some/dir'))
+        then:
+        opts.volumes == ['/some/dir']
+
+        when:
+        opts.addVolume(Paths.get('/other/dir'))
+        opts.addVolume(Paths.get('/other/dir'))
+        then:
+        opts.volumes == ['/some/dir', '/other/dir']
     }
 
 }
