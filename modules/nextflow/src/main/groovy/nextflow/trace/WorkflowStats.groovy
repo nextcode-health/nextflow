@@ -291,7 +291,6 @@ class WorkflowStats implements Cloneable {
     void markSubmitted(TaskRun task) {
         final state = getOrCreateRecord(task.processor)
         state.hash = task.hashLog
-        state.taskName = task.name
         state.pending --
         state.submitted ++
         // global counters
@@ -338,7 +337,7 @@ class WorkflowStats implements Cloneable {
 
     void markCompleted(TaskRun task, TraceRecord trace) {
         ProgressRecord state = getOrCreateRecord(task.processor)
-        state.taskName = task.name
+
         state.hash = task.hashLog
         state.running --
         state.loadCpus -= task.getConfig().getCpus()
@@ -384,7 +383,6 @@ class WorkflowStats implements Cloneable {
         if( trace ) {
             state.cached++
             state.hash = task.hashLog
-            state.taskName = task.name
             // global counters
             this.cachedMillis += getCpuTime(trace)
             this.cachedCount++
@@ -392,7 +390,6 @@ class WorkflowStats implements Cloneable {
         else {
             state.stored++
             state.hash = 'skipped'
-            state.taskName = task.name
         }
         changeTimestamp = System.currentTimeMillis()
     }

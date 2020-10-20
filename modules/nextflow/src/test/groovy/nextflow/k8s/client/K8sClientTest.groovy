@@ -61,6 +61,18 @@ class K8sClientTest extends Specification {
         def e = thrown(K8sResponseException)
         e.response.field_x == 'oops..'
 
+        when:
+        client.config.server = 'http://my-server.com'
+        client.config.token = TOKEN
+        client.makeRequest('POST', '/foo/bar')
+        then:
+        5 * client.createConnection0("http://my-server.com/foo/bar") >> HTTP_CONN
+        0 * client.setupHttpsConn(_) >> null
+        5 * HTTP_CONN.setRequestMethod('POST') >> null
+        5 * HTTP_CONN.getResponseCode() >> 503
+        5 * HTTP_CONN.getErrorStream() >> { new ByteArrayInputStream('{"field_x":"oops.."}'.bytes) }
+        e = thrown(K8sResponseException)
+        e.response.field_x == 'oops..'
     }
 
     def 'should make a get request' () {

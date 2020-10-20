@@ -16,6 +16,8 @@
 
 package nextflow.k8s
 
+import groovyx.gpars.agent.Agent
+
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -76,6 +78,11 @@ class K8sTaskHandler extends TaskHandler {
 
     private K8sExecutor executor
 
+    /**
+     * An agent for the k8s api calls in a separate thread
+     */
+    private Agent<K8sTaskHandler> k8sTaskHandlerAgent
+
     K8sTaskHandler( TaskRun task, K8sExecutor executor ) {
         super(task)
         this.executor = executor
@@ -83,6 +90,7 @@ class K8sTaskHandler extends TaskHandler {
         this.outputFile = task.workDir.resolve(TaskRun.CMD_OUTFILE)
         this.errorFile = task.workDir.resolve(TaskRun.CMD_ERRFILE)
         this.exitFile = task.workDir.resolve(TaskRun.CMD_EXIT)
+        this.k8sTaskHandlerAgent = new Agent<>(this)
     }
 
     /** only for testing -- do not use */
@@ -205,13 +213,13 @@ class K8sTaskHandler extends TaskHandler {
         Map result = [:]
         def labels = k8sConfig.getLabels()
         if( labels ) {
-            labels.each { k,v -> result.put(k,sanitize0(v)) }
+            labels.each { k,v -> result.put(k,sanitizeLabelValue(v)) }
         }
         result.app = 'nextflow'
-        result.runName = sanitize0(getRunName())
-        result.taskName = sanitize0(task.getName())
-        result.processName = sanitize0(task.getProcessor().getName())
-        result.sessionId = sanitize0("uuid-${executor.getSession().uniqueId}")
+        result.runName = sanitizeLabelValue(getRunName())
+        result.taskName = sanitizeLabelValue(task.getName())
+        result.processName = sanitizeLabelValue(task.getProcessor().getName())
+        result.sessionId = sanitizeLabelValue("uuid-${executor.getSession().uniqueId}")
         return result
     }
 
@@ -219,24 +227,35 @@ class K8sTaskHandler extends TaskHandler {
         Map result = [:]
         def annotations = k8sConfig.getAnnotations()
         if( annotations ) {
-            annotations.each { k,v -> result.put(k,sanitize0(v)) }
+            annotations.each { k,v -> result.put(k,sanitizeAnnotationValue(v)) }
         }
         return result
     }
 
+    protected String sanitizeLabelValue(value) {
+        return sanitizeK8sValue(value,true)
+    }
+
+    protected String sanitizeAnnotationValue(value) {
+        return sanitizeK8sValue(value,false)
+    }
+
     /**
-     * Valid label must be an empty string or consist of alphanumeric characters, '-', '_' or '.',
-     * and must start and end with an alphanumeric character.
+     * Valid label/annotation values must be an empty string or consist of alphanumeric characters,
+     * '-', '_' or '.', and must start and end with an alphanumeric character.
+     * Also limits the length of the value to 63 characters unless specifically told not not to.
      *
      * @param value
+     * @param limitLength If true then limit the length of the returned string to 63 characters.
      * @return
      */
-
-    protected String sanitize0( value ) {
+    protected String sanitizeK8sValue(value, limitLength) {
         def str = String.valueOf(value)
         str = str.replaceAll(/[^a-zA-Z0-9\.\_\-]+/, '_')
         str = str.replaceAll(/^[^a-zA-Z]+/, '')
         str = str.replaceAll(/[^a-zA-Z0-9]+$/, '')
+        if(limitLength)
+            str = str.take(63)
         return str
     }
 
@@ -271,12 +290,25 @@ class K8sTaskHandler extends TaskHandler {
         final now = System.currentTimeMillis()
         final delta =  now - timestamp;
         if( !state || delta >= 1_000) {
-            def newState = client.podState(podName)
-            if( newState ) {
-                state = newState
-                timestamp = now
+            try {
+                def newState = client.podState(podName)
+                if (newState) {
+                    state = newState
+                    timestamp = now
+                }
+            } catch(K8sResponseException kex) {
+                //If the pod is not found it means that someone has removed it. We'll treat it as being terminated
+                if(kex.response.code == 404 && kex.response.reason == "NotFound") {
+                    log.debug "Could not find pod $podName. Returning its state as 'terminated'.", kex
+                    state = [terminated:  [startedAt: now] ]
+                } else {
+                    throw kex
+                }
             }
         }
+        if(!state || state?.size() == 0)
+            //FIXME: Add the k8s state to the log so we can figure out what's happening.
+            log.debug("K8s Could not compute state for pod $podName.")
         return state
     }
 
@@ -341,6 +373,10 @@ class K8sTaskHandler extends TaskHandler {
         }
     }
 
+    protected void asyncDeletePod() {
+        k8sTaskHandlerAgent.send({client.podDelete(podName)})
+    }
+
     /**
      * Terminates the current task execution
      */
@@ -351,7 +387,7 @@ class K8sTaskHandler extends TaskHandler {
         
         if( podName ) {
             log.trace "[K8s] deleting pod name=$podName"
-            client.podDelete(podName)
+            asyncDeletePod()
         }
         else {
             log.debug "[K8s] Oops.. invalid delete action"

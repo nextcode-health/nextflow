@@ -118,6 +118,8 @@ class TowerClient implements TraceObserver {
 
     private int backOffBase
 
+    private int connectionTimeout
+
     /**
      * Constructor that consumes a URL and creates
      * a basic HTTP client.
@@ -160,6 +162,10 @@ class TowerClient implements TraceObserver {
 
     void setBackOffDelay( int value ) {
         this.backOffDelay = value
+    }
+
+    void setConnectionTimeout(int value) {
+        this.connectionTimeout = value
     }
 
     /**
@@ -213,7 +219,7 @@ class TowerClient implements TraceObserver {
      */
     @Override
     void onFlowCreate(Session session) {
-        log.debug "Creating Tower observer -- endpoint=$endpoint; requestInterval=$requestInterval; aliveInterval=$aliveInterval; maxRetries=$maxRetries; backOffBase=$backOffBase; backOffDelay=$backOffDelay"
+        log.debug "Creating Tower observer -- endpoint=$endpoint; requestInterval=$requestInterval; aliveInterval=$aliveInterval; maxRetries=$maxRetries; backOffBase=$backOffBase; backOffDelay=$backOffDelay; connectionTimeout=$connectionTimeout"
         
         this.session = session
         this.aggregator = new ResourcesAggregator(session)
@@ -256,6 +262,9 @@ class TowerClient implements TraceObserver {
         httpClient.maxRetries = maxRetries
         httpClient.backOffBase = backOffBase
         httpClient.backOffDelay = backOffDelay
+
+        // configure timeout
+        httpClient.connectionTimeout = connectionTimeout
 
         final req = makeBeginReq(session)
         final resp = sendHttpMessage(urlTraceBegin, req, 'PUT')

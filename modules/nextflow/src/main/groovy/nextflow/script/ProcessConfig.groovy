@@ -237,7 +237,6 @@ class ProcessConfig implements Map<String,Object>, Cloneable {
 
     def methodMissing( String name, def args ) {
         checkName(name)
-
         if( args instanceof Object[] ) {
             if( args.size()==1 ) {
                 configProperties[ name ] = args[0]
@@ -445,6 +444,7 @@ class ProcessConfig implements Map<String,Object>, Cloneable {
      *      the same config setting).
      *
      */
+    //FIXME: Repeated directives like pod have to be merged
     protected void applyConfigDefaults( Map processDefaults ) {
         for( String key : processDefaults.keySet() ) {
             if( key == 'params' )
@@ -794,6 +794,7 @@ class ProcessConfig implements Map<String,Object>, Cloneable {
      * @return
      *      The {@link ProcessConfig} instance itself
      */
+    //TODO: Check this when merging with process
     ProcessConfig pod( Map entry ) {
 
         if( !entry )

@@ -2058,8 +2058,14 @@ class TaskProcessor {
         }
 
         // -- finalize the task
-        if( fault != ErrorStrategy.RETRY )
-            finalizeTask0(task)
+        if( fault != ErrorStrategy.RETRY ) {
+            try {
+                finalizeTask0(task)
+            }
+            catch (Throwable error) {
+                fault = resumeOrDie(task, error)
+            }
+        }
 
         return fault
     }

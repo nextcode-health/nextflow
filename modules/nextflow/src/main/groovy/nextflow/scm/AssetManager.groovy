@@ -466,7 +466,7 @@ class AssetManager {
         }
     }
 
-
+    //FIXME: The name is the last token
     String getBaseName() {
         def result = project.tokenize('/')
         if( result.size() > 2 ) throw new IllegalArgumentException("Not a valid projct name: $project")

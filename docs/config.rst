@@ -753,6 +753,7 @@ Name                Description
 ================== ================
 enabled             If ``true`` it will send HTTP POST requests to a given url.
 url                The url where to send HTTP POST requests (default: ``http:localhost``).
+connectionTimeout  The amount of time in milliseconds the weblog will wait before timing out when sending http requests.
 ================== ================
 
 

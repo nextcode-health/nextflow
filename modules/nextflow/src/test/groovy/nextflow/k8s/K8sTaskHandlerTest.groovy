@@ -482,13 +482,13 @@ class K8sTaskHandlerTest extends Specification {
         handler.kill()
         then:
         1 * handler.cleanupDisabled() >> false
-        1 * client.podDelete(POD_NAME) >> null
+        1 * handler.asyncDeletePod() >> null
 
         when:
         handler.kill()
         then:
         1 * handler.cleanupDisabled() >> true
-        0 * client.podDelete(POD_NAME) >> null
+        0 * handler.asyncDeletePod() >> null
     }
 
     def 'should check task cached state' () {
@@ -622,13 +622,13 @@ class K8sTaskHandlerTest extends Specification {
     }
 
     @Unroll
-    def 'should sanitize k8s label: #label' () {
+    def 'should sanitize k8s label value: #label' () {
 
         given:
         def handler = new K8sTaskHandler()
 
         expect:
-        handler.sanitize0(label) == str
+        handler.sanitizeLabelValue(label) == str
 
         where:
         label           | str
@@ -645,6 +645,34 @@ class K8sTaskHandlerTest extends Specification {
         'hello_123'     | 'hello_123'
         'HELLO 123'     | 'HELLO_123'
         '123hello'      | 'hello'
+        'a' * 70        | 'a' * 63 //make sure we limit label value lengths to 63 chars
+    }
+
+    @Unroll
+    def 'should sanitize k8s annotation value: #label' () {
+
+        given:
+        def handler = new K8sTaskHandler()
+
+        expect:
+        handler.sanitizeAnnotationValue(label) == str
+
+        where:
+        label           | str
+        null            | 'null'
+        'hello'         | 'hello'
+        'hello world'   | 'hello_world'
+        'hello  world'  | 'hello_world'
+        'hello.world'   | 'hello.world'
+        'hello-world'   | 'hello-world'
+        'hello_world'   | 'hello_world'
+        'hello_world-'  | 'hello_world'
+        'hello_world_'  | 'hello_world'
+        'hello_world.'  | 'hello_world'
+        'hello_123'     | 'hello_123'
+        'HELLO 123'     | 'HELLO_123'
+        '123hello'      | 'hello'
+        'a' * 70        | 'a' * 70 // Annotation values have no length limits
     }
 
     def 'should delete pod if complete' () {
@@ -756,5 +784,46 @@ class K8sTaskHandlerTest extends Specification {
         1 * taskConfig.getPodOptions() >> new PodOptions([[env:'HELLO', value:'WORLD']])
         1 * k8sConfig.getPodOptions() >> new PodOptions([ [env:'BRAVO', value:'HOTEL'] ])
         opts == new PodOptions([[env:'HELLO', value:'WORLD'], [env:'BRAVO', value:'HOTEL']])
+    }
+
+    def 'should return terminated state if pod is not found (404 error), else an error'() {
+        given:
+        def RESP_404_ERROR =
+        """
+        {        
+            "kind": "Status",
+            "apiVersion": "v1",
+            "metadata": {},
+            "status": "Failure",
+            "message": "pods \\"nf-cc17b9c098c3752aa0d6f24f86c86a0f\\" not found",
+            "reason": "NotFound",
+            "details": {
+                "name": "nf-cc17b9c098c3752aa0d6f24f86c86a0f",
+                "kind": "pods"
+            },
+            "code": 404
+        }
+        """
+        def RESP_UNDEFINED_ERROR = "{}"
+        def POD_NAME = 'the-pod-name'
+        def task = new TaskRun()
+        def client = Mock(K8sClient)
+        def handler = Spy(K8sTaskHandler)
+        handler.task = task
+        handler.client = client
+        handler.podName = POD_NAME
+        Map result
+
+        when:
+        result = handler.getState()
+        then:
+        1 * client.podState(POD_NAME) >> { throw new K8sResponseException(new K8sResponseJson(RESP_404_ERROR))}
+        result.terminated
+
+        when:
+        handler.getState()
+        then:
+        1 * client.podState(POD_NAME) >> { throw new K8sResponseException(new K8sResponseJson(RESP_UNDEFINED_ERROR))}
+        thrown(K8sResponseException)
     }
 }

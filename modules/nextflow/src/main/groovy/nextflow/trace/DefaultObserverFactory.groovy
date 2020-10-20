@@ -1,5 +1,7 @@
 package nextflow.trace
 
+import nextflow.util.SimpleHttpClient
+
 import java.nio.file.Path
 
 import nextflow.Session
@@ -46,6 +48,11 @@ class DefaultObserverFactory implements TraceObserverFactory {
         if ( isEnabled ) {
             if ( !url ) url = WebLogObserver.DEF_URL
             def observer = new WebLogObserver(url)
+            // error handling settings
+            observer.maxRetries = config.navigate('weblog.maxRetries', 5) as int
+            observer.backOffBase = config.navigate('weblog.backOffBase', SimpleHttpClient.DEFAULT_BACK_OFF_BASE) as int
+            observer.backOffDelay = config.navigate('weblog.backOffDelay', SimpleHttpClient.DEFAULT_BACK_OFF_DELAY  ) as int
+            observer.connectionTimeout = config.navigate('weblog.connectionTimeout', SimpleHttpClient.DEFAULT_TIMEOUT  ) as int
             result << observer
         }
     }

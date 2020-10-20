@@ -16,6 +16,8 @@
 
 package nextflow
 
+import nextflow.exception.AbortRunException
+
 import java.nio.file.FileSystem
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -240,6 +242,12 @@ class Nextflow {
         }
         else if ( message ) {
             log.info message
+        }
+        //Close the session for cleanup
+        if(exitCode == 0) {
+            session.destroy()
+        } else {
+            session.abort(new ProcessUnrecoverableException(message))
         }
         System.exit(exitCode)
     }

@@ -256,6 +256,7 @@ class K8sClient {
                 }
             }
             // undetermined status -- return an empty response
+            log.debug("[K8s] Could not map pod state to nextflow state. Pod state = $status.")
             return Collections.emptyMap()
         }
 
@@ -336,38 +337,53 @@ class K8sClient {
      *      A two elements list in which the first entry is an integer representing the HTTP response code,
      *      the second element is the text (json) response
      */
+    //TODO: If this works then make the retry stuff more generic and better
     protected K8sResponseApi makeRequest(String method, String path, String body=null) throws K8sResponseException {
         assert config.server, 'Missing Kubernetes server name'
         assert path.startsWith('/'), 'Kubernetes API request path must starts with a `/` character'
 
         final prefix = config.server.contains("://") ? config.server : "https://$config.server"
-        final conn = createConnection0(prefix + path)
-        conn.setRequestProperty("Content-Type", "application/json")
-        if( config.token ) {
-            conn.setRequestProperty("Authorization", "Bearer $config.token")
+        int errorCount = 0
+
+        while(true) {
+            final conn = createConnection0(prefix + path)
+            conn.setRequestProperty("Content-Type", "application/json")
+            if( config.token ) {
+                conn.setRequestProperty("Authorization", "Bearer $config.token")
+            }
+
+            if( conn instanceof HttpsURLConnection ) {
+                setupHttpsConn(conn)
+            }
+
+            if( !method ) method = body ? 'POST' : 'GET'
+            conn.setRequestMethod(method)
+            log.trace "[K8s] API request $method $path ${body ? '\n'+prettyPrint(body).indent() : ''}"
+
+            if( body ) {
+                conn.setDoOutput(true);
+                conn.setDoInput(true);
+                conn.getOutputStream() << body
+                conn.getOutputStream().flush()
+            }
+
+            final code = conn.getResponseCode()
+            final isError = code >= 400
+            final stream = isError ? conn.getErrorStream() : conn.getInputStream()
+            if( isError ) {
+                errorCount += 1
+                def err = new K8sResponseException("Request $method $path returned an error code=$code", stream)
+                if(code < 500 || errorCount >= 5) { //only retry if we encounter a server errors since sometimes they resolve
+                    throw err
+                } else {
+                    final delay = (Math.pow(3, errorCount) as long) * 250
+                    log.warn "[K8s] Got HTTP error=$code waiting for ${delay}ms (errorCount=$errorCount)"
+                    Thread.sleep(delay)
+                }
+            } else {
+                return new K8sResponseApi(code, stream)
+            }
         }
-
-        if( conn instanceof HttpsURLConnection ) {
-            setupHttpsConn(conn)
-        }
-
-        if( !method ) method = body ? 'POST' : 'GET'
-        conn.setRequestMethod(method)
-        log.trace "[K8s] API request $method $path ${body ? '\n'+prettyPrint(body).indent() : ''}"
-
-        if( body ) {
-            conn.setDoOutput(true);
-            conn.setDoInput(true);
-            conn.getOutputStream() << body
-            conn.getOutputStream().flush()
-        }
-
-        final code = conn.getResponseCode()
-        final isError = code >= 400
-        final stream = isError ? conn.getErrorStream() : conn.getInputStream()
-        if( isError )
-            throw new K8sResponseException("Request $method $path returned an error code=$code", stream)
-        return new K8sResponseApi(code, stream)
     }
 
     static private void trace(String method, String path, String text) {

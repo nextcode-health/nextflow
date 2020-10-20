@@ -37,6 +37,7 @@ class SimpleHttpClient {
 
     public static int DEFAULT_BACK_OFF_BASE = 3
     public static int DEFAULT_BACK_OFF_DELAY = 250
+    public static int DEFAULT_TIMEOUT = 30000
 
     /**
      * Default user agent
@@ -71,6 +72,8 @@ class SimpleHttpClient {
 
     private int backOffDelay = DEFAULT_BACK_OFF_DELAY
 
+    private int connectionTimeout = DEFAULT_TIMEOUT
+
     /**
      * Send a json formatted string as HTTP POST request
      * @param json Message content as JSON
@@ -80,7 +83,7 @@ class SimpleHttpClient {
         if (!url)
             throw new IllegalStateException("URL needs to be set!")
 
-        // reset the error count 
+        // reset the error count
         errorCount = 0
 
         while( true ) {
@@ -94,6 +97,8 @@ class SimpleHttpClient {
                 con.setRequestProperty("Authorization","Basic ${authToken.bytes.encodeBase64()}")
 
             con.setDoOutput(true)
+            con.setConnectTimeout(connectionTimeout)
+            con.setReadTimeout(connectionTimeout)
 
             // Send POST request
             if( json ) {
@@ -180,6 +185,10 @@ class SimpleHttpClient {
         return userAgent
     }
 
+    int getConnectionTimeout(){
+        return connectionTimeout
+    }
+
     /**
      * Setter for the header user agent
      * @param agent A user agent for the HTTP request
@@ -206,6 +215,11 @@ class SimpleHttpClient {
 
     SimpleHttpClient setBackOffDelay(int value ) {
         this.backOffDelay= value
+        return this
+    }
+
+    SimpleHttpClient setConnectionTimeout(int timeout) {
+        this.connectionTimeout = timeout
         return this
     }
 

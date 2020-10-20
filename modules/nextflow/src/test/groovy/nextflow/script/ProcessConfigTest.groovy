@@ -549,6 +549,22 @@ class ProcessConfigTest extends Specification {
         ]
 
     }
+/* TODO: Enable again when we want to fix this
+
+    def 'should merge pod config when applying defaults' () {
+
+        given:
+        def process = new ProcessConfig( pod: [secret: 'foo', mountPath: '/here'])
+
+        when:
+        process.applyConfigDefaults(pod: [secret: 'bar', mountPath: '/there'])
+
+        then:
+        process.pod == [
+                [secret: 'foo', mountPath: '/here'],
+                [secret: 'bar', mountPath: '/there']
+        ]
+    }*/
 
     def 'should clone config object' () {
 

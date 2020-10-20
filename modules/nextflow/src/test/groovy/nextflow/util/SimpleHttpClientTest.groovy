@@ -159,5 +159,43 @@ class SimpleHttpClientTest extends Specification{
 
     }
 
+    def 'should have a default timeout' () {
+        when:
+        def client = new SimpleHttpClient()
 
+        then:
+        client.connectionTimeout == SimpleHttpClient.DEFAULT_TIMEOUT
+
+    }
+
+    @Timeout(1)
+    def 'should return an error when timeout is exceeded'() {
+        given:
+
+        def PORT = 9900
+        def ENDPOINT = "http://localhost:$PORT/foo"
+
+        def client = new SimpleHttpClient()
+        client.connectionTimeout = 10
+
+        def server = HttpServer.create(new InetSocketAddress(PORT), 0)
+        server.createContext("/", new HttpHandler() {
+            @Override
+            void handle(HttpExchange exchange) throws IOException {
+                Thread.sleep(1000)
+                exchange.sendResponseHeaders(200, 0)
+                exchange.close()
+            }
+        });
+        server.start()
+
+        when:
+        client.sendHttpMessage(ENDPOINT,"{}")
+
+        then:
+        thrown(SocketTimeoutException)
+
+        cleanup:
+        server?.stop(0)
+    }
 }

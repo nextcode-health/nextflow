@@ -79,6 +79,14 @@ class WebLogObserver implements TraceObserver{
 
     private String endpoint
 
+    private int maxRetries = 5
+
+    private int backOffDelay
+
+    private int backOffBase
+
+    private int connectionTimeout
+
     /**
      * Constructor that consumes a URL and creates
      * a basic HTTP client.
@@ -95,6 +103,22 @@ class WebLogObserver implements TraceObserver{
      */
     protected WebLogObserver() {
 
+    }
+
+    void setMaxRetries(int value) {
+        this.maxRetries = value
+    }
+
+    void setBackOffDelay(int value) {
+        this.backOffDelay = value
+    }
+
+    void setBackOffBase(int value) {
+        this.backOffBase = value
+    }
+
+    void setConnectionTimeout(int value) {
+        this.connectionTimeout = value
     }
 
     /**
@@ -194,6 +218,12 @@ class WebLogObserver implements TraceObserver{
         // Set the message info
         final time = new Date().format(Const.ISO_8601_DATETIME_FORMAT, UTC)
 
+        // configure the http client
+        httpClient.connectionTimeout = connectionTimeout
+        httpClient.backOffDelay = backOffDelay
+        httpClient.backOffBase = backOffBase
+        httpClient.maxRetries = maxRetries
+
         final message = new HashMap(4)
         message.runName = runName
         message.runId = runId
@@ -208,8 +238,12 @@ class WebLogObserver implements TraceObserver{
             throw new IllegalArgumentException("Only TraceRecord and Manifest class types are supported: [${payload.getClass().getName()}] $payload")
 
         // The actual HTTP request
-        httpClient.sendHttpMessage(endpoint, generator.toJson(message))
-        logHttpResponse()
+        try {
+            httpClient.sendHttpMessage(endpoint, generator.toJson(message))
+            logHttpResponse()
+        } catch(Exception e) {
+            log.error("Error while sending event $event", e)
+        }
     }
 
     protected static FlowPayload createFlowPayloadFromSession(Session session) {
